@@ -4,11 +4,13 @@ module giverep_claim::giverep_claim;
 use sui::balance;
 use sui::coin;
 use sui::event;
+use sui::table;
 
 public struct Pool<phantom T> has key {
     id: UID,
     balance: balance::Balance<T>,
     managers: vector<address>,
+    claimed: table::Table<address, bool>,
 }
 
 // --- Events ---
@@ -42,6 +44,7 @@ public fun init_pool<T>(managers: vector<address>, ctx: &mut TxContext) {
         id: object::new(ctx),
         balance: balance::zero<T>(),
         managers,
+        claimed: table::new(ctx),
     };
 
     event::emit(PoolCreatedEvent {
@@ -94,6 +97,8 @@ public fun claim<T>(pool: &mut Pool<T>, amount: u64, ctx: &mut TxContext) {
         manager: ctx.sender(),
         receiver: sponsor,
     });
+
+    pool.claimed.add(sponsor, true);
 
     transfer::public_transfer(output, sponsor);
 }
