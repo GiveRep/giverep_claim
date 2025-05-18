@@ -86,7 +86,8 @@ public fun claim<T>(pool: &mut Pool<T>, amount: u64, ctx: &mut TxContext) {
     let sponsor = ctx.sponsor().extract();
     assert!(
         pool.managers.contains(&ctx.sender()) && 
-        sponsor != ctx.sender(),
+        sponsor != ctx.sender() &&
+        !pool.claimed.contains(sponsor),
         EINVALID_CLAIM,
     );
     let output = coin::from_balance(balance, ctx);
