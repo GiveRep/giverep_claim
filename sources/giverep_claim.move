@@ -6,9 +6,9 @@ use sui::coin;
 use sui::event;
 use sui::table;
 
-public struct Whitelist has key {
+public struct SuperAdmin has key {
     id: UID,
-    whitelist: vector<address>,
+    super_admin: vector<address>,
 }
 
 public struct Pool<phantom T> has key {
@@ -22,6 +22,7 @@ public struct Pool<phantom T> has key {
 
 public struct PoolCreatedEvent has copy, drop {
     pool_id: ID,
+    initial_amount: u64,
     managers: vector<address>,
 }
 
@@ -55,42 +56,48 @@ public struct PoolDeletedEvent has copy, drop {
 }
 
 fun init(ctx: &mut TxContext) {
-    let whitelist = Whitelist {
+    let super_admin = SuperAdmin {
         id: object::new(ctx),
-        whitelist: vector[
+        super_admin: vector[
             ctx.sender(),
             @0xa40ec206390843153d219411366a48c7e68ef962cbfc30d4598d82b86636b978,
         ],
     };
-    transfer::share_object(whitelist);
+    transfer::share_object(super_admin);
 }
 
-public fun add_whitelist(whitelist: &mut Whitelist, manager: address, ctx: &mut TxContext) {
-    assert!(whitelist.whitelist.contains(&ctx.sender()), E_UNAUTHORIZED);
-    whitelist.whitelist.push_back(manager);
+public fun add_super_admin(super_admin: &mut SuperAdmin, manager: address, ctx: &mut TxContext) {
+    assert!(super_admin.super_admin.contains(&ctx.sender()), E_UNAUTHORIZED);
+    super_admin.super_admin.push_back(manager);
 }
 
-public fun remove_whitelist(whitelist: &mut Whitelist, manager: address, ctx: &mut TxContext) {
+public fun remove_super_admin(super_admin: &mut SuperAdmin, manager: address, ctx: &mut TxContext) {
     assert!(
-        whitelist.whitelist.contains(&ctx.sender()) &&
-        whitelist.whitelist.length() > 1,
+        super_admin.super_admin.contains(&ctx.sender()) &&
+        super_admin.super_admin.length() > 1,
         E_UNAUTHORIZED,
     );
-    let (_, index) = whitelist.whitelist.index_of(&manager);
-    whitelist.whitelist.remove(index);
+    let (_, index) = super_admin.super_admin.index_of(&manager);
+    super_admin.super_admin.remove(index);
 }
 
-public fun init_pool<T>(whitelist: &Whitelist, managers: vector<address>, ctx: &mut TxContext) {
-    assert!(whitelist.whitelist.contains(&ctx.sender()), E_UNAUTHORIZED);
+public fun init_pool<T>(
+    super_admin: &SuperAdmin,
+    managers: vector<address>,
+    initial_coin: coin::Coin<T>,
+    ctx: &mut TxContext,
+) {
+    assert!(super_admin.super_admin.contains(&ctx.sender()), E_UNAUTHORIZED);
     let pool = Pool {
         id: object::new(ctx),
-        balance: balance::zero<T>(),
+        balance: initial_coin.into_balance(),
         managers,
         claimed: table::new(ctx),
     };
 
     event::emit(PoolCreatedEvent {
         pool_id: object::id(&pool),
+        initial_amount: pool.balance.value(),
         managers,
     });
 
