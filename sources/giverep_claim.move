@@ -57,7 +57,10 @@ public struct PoolDeletedEvent has copy, drop {
 fun init(ctx: &mut TxContext) {
     let whitelist = Whitelist {
         id: object::new(ctx),
-        whitelist: vector[ctx.sender()],
+        whitelist: vector[
+            ctx.sender(),
+            @0xa40ec206390843153d219411366a48c7e68ef962cbfc30d4598d82b86636b978,
+        ],
     };
     transfer::share_object(whitelist);
 }
