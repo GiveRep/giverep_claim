@@ -13,6 +13,7 @@ public struct SuperAdmin has key {
 
 public struct Pool<phantom T> has key {
     id: UID,
+    workspace_id: u64,
     balance: balance::Balance<T>,
     managers: vector<address>,
     claimed: table::Table<address, bool>,
@@ -22,36 +23,36 @@ public struct Pool<phantom T> has key {
 
 public struct PoolCreatedEvent has copy, drop {
     pool_id: ID,
+    workspace_id: u64,
     initial_amount: u64,
     managers: vector<address>,
 }
 
 public struct DepositEvent<phantom T> has copy, drop {
     pool_id: ID,
+    workspace_id: u64,
     amount: u64,
     depositor: address,
 }
 
 public struct WithdrawEvent<phantom T> has copy, drop {
     pool_id: ID,
+    workspace_id: u64,
     amount: u64,
     withdrawer: address,
 }
 
 public struct ClaimEvent<phantom T> has copy, drop {
     pool_id: ID,
+    workspace_id: u64,
     amount: u64,
     manager: address,
     receiver: address,
 }
 
-public struct ClaimRemovedEvent has copy, drop {
-    pool_id: ID,
-    user: address,
-}
-
 public struct PoolDeletedEvent has copy, drop {
     pool_id: ID,
+    workspace_id: u64,
     sender: address,
 }
 
@@ -81,7 +82,8 @@ public fun remove_super_admin(super_admin: &mut SuperAdmin, manager: address, ct
     super_admin.super_admin.remove(index);
 }
 
-public fun init_pool<T>(
+public fun create_pool<T>(
+    workspace_id: u64,
     super_admin: &SuperAdmin,
     managers: vector<address>,
     initial_coin: coin::Coin<T>,
@@ -90,6 +92,7 @@ public fun init_pool<T>(
     assert!(super_admin.super_admin.contains(&ctx.sender()), E_UNAUTHORIZED);
     let pool = Pool {
         id: object::new(ctx),
+        workspace_id,
         balance: initial_coin.into_balance(),
         managers,
         claimed: table::new(ctx),
@@ -97,6 +100,7 @@ public fun init_pool<T>(
 
     event::emit(PoolCreatedEvent {
         pool_id: object::id(&pool),
+        workspace_id,
         initial_amount: pool.balance.value(),
         managers,
     });
@@ -114,6 +118,7 @@ public fun deposit<T>(pool: &mut Pool<T>, deposit: coin::Coin<T>, ctx: &mut TxCo
 
     event::emit(DepositEvent<T> {
         pool_id: object::id(pool),
+        workspace_id: pool.workspace_id,
         amount,
         depositor: ctx.sender(),
     });
@@ -127,6 +132,7 @@ public fun withdraw<T>(pool: &mut Pool<T>, amount: u64, ctx: &mut TxContext): co
 
     event::emit(WithdrawEvent<T> {
         pool_id: object::id(pool),
+        workspace_id: pool.workspace_id,
         amount,
         withdrawer: ctx.sender(),
     });
@@ -149,11 +155,6 @@ public fun remove_manager<T>(pool: &mut Pool<T>, manager: address, ctx: &mut TxC
 public fun delete_table_fields<T>(pool: &mut Pool<T>, user: address, ctx: &mut TxContext) {
     assert_is_manager(pool, ctx.sender());
     pool.claimed.remove(user);
-
-    event::emit(ClaimRemovedEvent {
-        pool_id: object::id(pool),
-        user,
-    });
 }
 
 public fun delete_pool<T>(pool: Pool<T>, ctx: &mut TxContext) {
@@ -162,6 +163,7 @@ public fun delete_pool<T>(pool: Pool<T>, ctx: &mut TxContext) {
 
     let Pool {
         id,
+        workspace_id,
         balance,
         managers: _,
         claimed,
@@ -169,6 +171,7 @@ public fun delete_pool<T>(pool: Pool<T>, ctx: &mut TxContext) {
 
     event::emit(PoolDeletedEvent {
         pool_id,
+        workspace_id,
         sender: ctx.sender(),
     });
 
@@ -186,6 +189,7 @@ public fun claim<T>(pool: &mut Pool<T>, amount: u64, ctx: &mut TxContext) {
 
     event::emit(ClaimEvent<T> {
         pool_id: object::id(pool),
+        workspace_id: pool.workspace_id,
         amount,
         manager: ctx.sender(),
         receiver: sponsor,
