@@ -1,9 +1,13 @@
 /// Module: giverep_claim
 module giverep_claim::giverep_claim;
 
+use sui::address;
 use sui::balance;
+use sui::bcs;
 use sui::coin;
+use sui::ed25519;
 use sui::event;
+use sui::hash;
 use sui::table;
 
 public struct SuperAdmin has key {
@@ -157,6 +161,19 @@ public fun delete_table_fields<T>(pool: &mut Pool<T>, user: address, ctx: &mut T
     pool.claimed.remove(user);
 }
 
+public fun delete_multiple_table_fields<T>(
+    pool: &mut Pool<T>,
+    users: vector<address>,
+    ctx: &mut TxContext,
+) {
+    assert_is_manager(pool, ctx.sender());
+    let mut index = 0;
+    while (index < users.length()) {
+        pool.claimed.remove(users[index]);
+        index = index + 1;
+    }
+}
+
 public fun delete_pool<T>(pool: Pool<T>, ctx: &mut TxContext) {
     assert_is_manager(&pool, ctx.sender());
     let pool_id = object::id(&pool);
@@ -187,20 +204,58 @@ public fun claim<T>(pool: &mut Pool<T>, amount: u64, ctx: &mut TxContext) {
     assert!(sponsor != ctx.sender() &&
         !pool.claimed.contains(sponsor), E_INVALID_CLAIM);
 
+    internal_claim_to_address(pool, amount, sponsor, ctx);
+}
+
+public struct ClaimStruct has drop {
+    pool_id: ID,
+    receiver: address,
+    amount: u64,
+}
+
+public fun claim_by_signature<T>(
+    pool: &mut Pool<T>,
+    amount: u64,
+    signature: vector<u8>,
+    public_key: vector<u8>,
+    ctx: &mut TxContext,
+) {
+    let receiver = ctx.sender();
+    let message = ClaimStruct {
+        pool_id: object::id(pool),
+        receiver,
+        amount,
+    };
+    let message_bytes = bcs::to_bytes(&message);
+    let is_valid = ed25519::ed25519_verify(&signature, &public_key, &message_bytes);
+    assert!(is_valid, E_INVALID_CLAIM);
+    let public_key_hash = hash::blake2b256(&public_key);
+    let signer_address = address::from_bytes(public_key_hash);
+    assert_is_manager(pool, signer_address);
+
+    internal_claim_to_address(pool, amount, receiver, ctx);
+}
+
+fun internal_claim_to_address<T>(
+    pool: &mut Pool<T>,
+    amount: u64,
+    receiver: address,
+    ctx: &mut TxContext,
+) {
     event::emit(ClaimEvent<T> {
         pool_id: object::id(pool),
         workspace_id: pool.workspace_id,
         amount,
         manager: ctx.sender(),
-        receiver: sponsor,
+        receiver,
     });
 
-    pool.claimed.add(sponsor, true);
+    pool.claimed.add(receiver, true);
 
     let balance = pool.balance.split(amount);
     let output = coin::from_balance(balance, ctx);
 
-    transfer::public_transfer(output, sponsor);
+    transfer::public_transfer(output, receiver);
 }
 
 fun assert_is_manager<T>(pool: &Pool<T>, sender: address) {
