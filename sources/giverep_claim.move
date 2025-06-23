@@ -60,6 +60,12 @@ public struct PoolDeletedEvent has copy, drop {
     sender: address,
 }
 
+public struct ClaimStruct has drop {
+    pool_id: ID,
+    receiver: address,
+    amount: u64,
+}
+
 fun init(ctx: &mut TxContext) {
     let super_admin = SuperAdmin {
         id: object::new(ctx),
@@ -207,12 +213,6 @@ public fun claim<T>(pool: &mut Pool<T>, amount: u64, ctx: &mut TxContext) {
     internal_claim_to_address(pool, amount, sponsor, ctx);
 }
 
-public struct ClaimStruct has drop {
-    pool_id: ID,
-    receiver: address,
-    amount: u64,
-}
-
 public fun claim_by_signature<T>(
     pool: &mut Pool<T>,
     amount: u64,
@@ -221,19 +221,27 @@ public fun claim_by_signature<T>(
     ctx: &mut TxContext,
 ) {
     let receiver = ctx.sender();
-    let message = ClaimStruct {
-        pool_id: object::id(pool),
-        receiver,
-        amount,
-    };
+    let message = create_claim_struct(object::id(pool), receiver, amount);
     let message_bytes = bcs::to_bytes(&message);
     let is_valid = ed25519::ed25519_verify(&signature, &public_key, &message_bytes);
     assert!(is_valid, E_INVALID_CLAIM);
-    let public_key_hash = hash::blake2b256(&public_key);
-    let signer_address = address::from_bytes(public_key_hash);
+
+    let mut public_key_with_flag = *&public_key;
+    public_key_with_flag.insert(0, 0x00);
+    let signer_address = address::from_bytes(
+        hash::blake2b256(&public_key_with_flag),
+    );
     assert_is_manager(pool, signer_address);
 
     internal_claim_to_address(pool, amount, receiver, ctx);
+}
+
+public fun create_claim_struct(pool_id: ID, receiver: address, amount: u64): ClaimStruct {
+    ClaimStruct {
+        pool_id,
+        receiver,
+        amount,
+    }
 }
 
 fun internal_claim_to_address<T>(
